@@ -1,0 +1,130 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r} 
+rm(list = ls())
+library(spdep)
+library(rflexscan)
+library(sf)
+library(tidyverse)
+library(readxl)
+library(fields)
+```
+
+```{r}
+#data <- st_read('C://Users//19795//OneDrive//Desktop//STAT 647//STAT 647 Project//Shapefile//2014_CT.shp')
+
+data <- st_read('C://Users//19795//OneDrive//Desktop//STAT 647//STAT 647 Project//Shapefile//2019_CT.shp')
+```
+
+```{r}
+#data$num_FF = data$COUNT_COUN
+#data = subset(data, select = -c(COUNT_COUN))
+#data = subset(data, select = -c(SUM_ALAN_1,SUM_AWAT_1,COUNT_COUN))
+#data$FF_Area = data$num_FF/(data$SUM_ALAND1+data$SUM_AWATER)*100000000 # USing a factor of 100000000
+
+data$num_FF = data$COUNT_GEOI
+data = subset(data, select = -c(COUNT_GEOI,NAME10,NAMELSAD10,MTFCC10,FUNCSTAT10))
+data$FF_Area = data$num_FF/(data$ALAND10+data$AWATER10)*100000 # USing a factor of 100000
+```
+
+```{r}
+# Neighborhood based on Adjacency 
+
+#data <- data[-c(38,71,151,233),]
+
+A <- st_touches(data)
+A <- as.matrix(A)
+adj <- apply(A==1,1,which)
+
+
+for (i in 1:length(adj)) {
+ if(lengths(adj[i]) == 0){
+ print(i)
+ }
+}
+
+#ggplot(data=data)+geom_sf(aes(fill=FF_Area))+scale_fill_gradientn(colours = terrain.colors(8))
+```
+
+```{r}
+# Neighborhood based on distance
+#coords <- cbind(as.numeric(data$INTPTLON10), as.numeric(data$INTPTLAT10))
+#coords <- cbind(as.numeric(data$Long), as.numeric(data$Lat))
+#Dist <- rdist.earth(coords, miles = T)
+#max_dist <- max(Dist)
+
+#threshold <- max_dist/10
+#ADJbyDist <- ifelse(Dist<threshold,1,0)
+#adj.2 <- apply(ADJbyDist==1,1,which)
+```
+
+```{r}
+expected <- sum(data$FF_Area) / nrow(data)
+
+#fls <- rflexscan(x = as.numeric(data$Long), y = as.numeric(data$Lat),
+#  observed = as.numeric(data$FF_Area),
+#  expected = as.numeric(expected),
+#  name = data$COUNTYFP10,
+#  clustersize = 20,
+#  nb = adj)
+
+
+fls <- rflexscan(x = as.numeric(data$INTPTLON10), y = as.numeric(data$INTPTLAT10),
+  observed = as.numeric(data$FF_Area),
+  expected = as.numeric(expected),
+  name = data$GEOID10,
+  clustersize = 5,
+  nb = adj)
+```
+
+```{r}
+sum <- summary(fls)
+sum$cluster
+```
+
+```{r}
+# Saving only significant clusters
+significant.clusters <- as.data.frame(list())
+
+all.clusters.data.frame <- as.data.frame(sum$cluster)
+
+for (row in 1:nrow(all.clusters.data.frame)){
+  if(all.clusters.data.frame[row, ]$P < 0.05){
+    significant.clusters <- rbind(significant.clusters, all.clusters.data.frame[row, ])
+  }
+}
+```
+
+```{r}
+data$cluster = 0 # To store the cluster number for the rows
+# Printing the differnt clusters 
+num.clusters <- nrow(significant.clusters)
+
+for (row in 1:nrow(significant.clusters)){
+  for (ct in fls$cluster[[row]]$name){
+    #ind <- which(data$COUNTYFP10 == ct)
+    ind <- which(data$GEOID10 == ct)
+    data[ind, ]$cluster <- num.clusters - row + 1 # most significant cluster has higher value
+  }
+}
+```
+
+```{r, fig.width=20,fig.height=30}
+# Just adjust the plot now.
+
+ggplot(data=data)+geom_sf(size = 0.05, aes(fill=cluster)) + scale_fill_gradient(high = "red", low = "white", na.value=NA)
+ggsave("2019_CT_cluster_size_5.png")
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
